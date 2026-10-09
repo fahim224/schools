@@ -1,0 +1,5 @@
+{
+  "name": "Shagha Maktab - MaktabYar",
+  "description": "A high-fidelity React application for generating and printing official Afghan school grading (Shagha Mazmoon) and regulation (Shagha Zawabit) sheets in A4 format with 40 rows per page.",
+  "requestFramePermissions": []
+}

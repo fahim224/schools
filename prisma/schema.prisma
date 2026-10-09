@@ -1,0 +1,350 @@
+datasource db {
+  provider  = "sqlite"
+  url       = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id             String    @id @default(cuid())
+  name           String?
+  email          String?   @unique
+  emailVerified  DateTime?
+  image          String?
+  password       String?
+  role           String    @default("TEACHER") // Roles: SUPERADMIN, ADMIN, TEACHER, STUDENT, PARENT, STAFF
+  isActive       Boolean   @default(true)
+  phone          String?
+  // Password reset fields
+  resetPasswordToken   String?   @unique
+  resetPasswordExpires DateTime?
+
+  receivedAmount Float     @default(0.0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  
+  // AI Usage tracking
+  aiUsageCharacters Int      @default(0)
+  aiCharLimit       Int?     // Optional individual limit override
+  classLimit        Int      @default(1) // Max classes for independent teachers
+  accounts       Account[]
+  sessions       Session[]
+  subjects       Subject[] @relation("TeacherSubjects")
+  managedClasses SchoolClass[] @relation("ClassTeacher")
+  currentClass   SchoolClass? @relation("ClassStudents", fields: [classId], references: [id])
+  classId        String?
+  createdById    String?
+  qrCode         String?   // QR Code data URL
+  permissions    String?   @default("CAN_GRADE,CAN_VIEW_RESULTS") // Comma-separated permissions codes
+
+  // Student specific fields
+  fatherName     String?
+  grandfatherName String?
+  studentId      String?   // نمبر اساس
+  surname        String?
+  tazkiraNo      String?
+  nameEn         String?
+  fatherNameEn   String?
+  grandfatherNameEn String?
+  surnameEn      String?
+  permanentAddress String?
+  currentAddress String?
+  paternalUncle  String?
+  maternalUncle  String?
+  paternalCousin String?
+  maternalCousin String?
+
+  // Staff/Teacher specific fields
+  jobTitle       String?
+  experience     String?
+  joinedDate     DateTime?
+
+  grades         Grade[]   @relation("StudentGrades")
+  enrollments    Enrollment[] @relation("StudentEnrollments")
+  attendance     Attendance[] @relation("StudentAttendance")
+
+  // Student Grouping
+  groupId        String?
+  group          StudentGroup? @relation("StudentToGroup", fields: [groupId], references: [id])
+
+  // Parent-Student Relationships
+  children       User[]    @relation("ParentChildren")
+  parents        User[]    @relation("ParentChildren")
+  
+  sentMessages   Message[] @relation("SentMessages")
+  resetRequests  PasswordResetRequest[]
+  schoolSettings SchoolSettings? @relation("UserSettings")
+  
+  // Gate Logs
+  gateLogs       GateLog[] @relation("UserLogs")
+  recordedLogs   GateLog[] @relation("StaffRecordedLogs")
+  readMessages   MessageRead[]
+
+  // Chat System
+  sentChats     ChatMessage[] @relation("SentChatMessages")
+  receivedChats ChatMessage[] @relation("ReceivedChatMessages")
+  lastActiveAt  DateTime? // status
+  lastTypedAt   DateTime? // typing indicator
+  
+  // Blocking
+  blockedUsers  User[] @relation("UserBlocks")
+  blockedBy     User[] @relation("UserBlocks")
+}
+
+model GateLog {
+  id          String   @id @default(cuid())
+  user        User     @relation("UserLogs", fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  type        String   // ENTRY, EXIT
+  timestamp   DateTime @default(now())
+  recordedBy  User     @relation("StaffRecordedLogs", fields: [recordedById], references: [id])
+  recordedById String
+  academicYear String?
+  createdById  String? // School principal ID
+  
+  @@index([userId])
+  @@index([createdById])
+}
+
+model Message {
+  id          String   @id @default(cuid())
+  content     String
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime?
+  
+  sender      User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  senderId    String
+
+  targetRoles String?  // e.g., "TEACHER,ADMIN" or "ALL"
+  isVisible   Boolean  @default(true)
+  readBy      MessageRead[]
+}
+
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String?
+  access_token       String?
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String?
+  session_state      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model SchoolClass {
+  id          String    @id @default(cuid())
+  name        String
+  level       String    // e.g., Grade 1
+  section     String    // e.g., A, B, Alef
+  gender      String    // e.g., BOYS, GIRLS, MIXED
+  teacher     User?     @relation("ClassTeacher", fields: [teacherId], references: [id])
+  teacherId   String?
+  subjects    Subject[] @relation("ClassSubjects")
+  students    User[]    @relation("ClassStudents")
+  enrollments Enrollment[] @relation("ClassEnrollments")
+  academicYear String?   // e.g., 1403
+  createdAt   DateTime  @default(now())
+  grades      Grade[]   @relation("ClassGrades")
+  attendance  Attendance[] @relation("ClassAttendance")
+  isActive    Boolean      @default(true)
+  createdById String?
+
+  // Attendance & Grading Settings
+  midTeachingDays    Int @default(100)
+  annualTeachingDays Int @default(200)
+  midMahroomiDays    Int @default(25)
+  annualMahroomiDays Int @default(50)
+}
+
+model Enrollment {
+  id           String      @id @default(cuid())
+  student      User        @relation("StudentEnrollments", fields: [studentId], references: [id], onDelete: Cascade)
+  studentId    String
+  class        SchoolClass @relation("ClassEnrollments", fields: [classId], references: [id])
+  classId      String
+  academicYear String      // e.g. "1404"
+  createdAt    DateTime    @default(now())
+
+  @@unique([studentId, academicYear])
+}
+
+model Subject {
+  id          String    @id @default(cuid())
+  name        String
+  teacher     User?     @relation("TeacherSubjects", fields: [teacherId], references: [id])
+  teacherId   String?
+  classes     SchoolClass[] @relation("ClassSubjects")
+  createdAt   DateTime  @default(now())
+  grades      Grade[]   @relation("SubjectGrades")
+  order       Int       @default(0)
+  createdById String?
+}
+
+model Grade {
+  id        String      @id @default(cuid())
+  student   User        @relation("StudentGrades", fields: [studentId], references: [id], onDelete: Cascade)
+  studentId String
+  subject   Subject     @relation("SubjectGrades", fields: [subjectId], references: [id])
+  subjectId String
+  class     SchoolClass @relation("ClassGrades", fields: [classId], references: [id])
+  classId   String
+  type      String      // MIDTERM, FINAL
+  score     Float
+  academicYear String?   // e.g., 1403
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt // @updatedAt is not valid in SQLite? No, it is.
+
+  @@unique([studentId, subjectId, classId, type])
+}
+
+model Attendance {
+  id           String      @id @default(cuid())
+  student      User        @relation("StudentAttendance", fields: [studentId], references: [id], onDelete: Cascade)
+  studentId    String
+  class        SchoolClass @relation("ClassAttendance", fields: [classId], references: [id])
+  classId      String
+  type         String      // MIDTERM, FINAL
+  days         Int         @default(0)
+  present      Int         @default(0)
+  absent       Int         @default(0)
+  sick         Int         @default(0)
+  leave        Int         @default(0)
+  remarks      String?
+  academicYear String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@unique([studentId, classId, type])
+}
+
+model SchoolSettings {
+  id                String   @id @default(cuid())
+  
+  // Owner of these settings (null = SuperAdmin/Default settings)
+  user              User?    @relation("UserSettings", fields: [userId], references: [id], onDelete: Cascade)
+  userId            String?  @unique
+  
+  schoolName        String   @default("لیسه عالی خصوصی نیکان")
+  schoolNameEn      String?
+  headerTitle1      String?  @default("وزارت معارف")
+  headerTitle2      String?  @default("ریاست معارف ولایت کابل")
+  headerTitle3      String?  @default("آمریت معارف حوزه دوازدهم تعلیمی")
+  logoLeft          String?  // URL/DataURL
+  logoRight         String?  // URL/DataURL
+  signatureLabel1   String?  @default("مهر و امضاء مدیر لیسه")
+  signatureLabel2   String?  @default("امضاء نگران صنف")
+  signatureLabel3   String?  @default("امضاء سرمعلم")
+  signatureLabel4   String?  @default("هیئت ممتحن")
+  signatureLabel5   String?  @default("هیئت ممتحن (۲)")
+  signatureLabel6   String?  @default("آمریت حوزه تعلیمی")
+  footerNote        String?  @default("در صورتیکه شهرت، نمبر تذکره، سال تولد، سکونت اصلی و یا سایر مشخصات مربوط به شاگرد مغایرت داشته باشد، الی مدت سه روز بعد از ابلاغ نتایج جهت اصلاح آن به اداره لیسه مراجعه نمایند.")
+  
+  // AI Assistant Settings
+  isAiEnabled       Boolean  @default(false)
+  isChatEnabled     Boolean  @default(true)
+  aiModel           String   @default("gemini-1.5-flash")
+  aiApiKey          String?
+  aiSystemPrompt    String?  @default("You are Rastyar AI assistant.")
+  // Contact Info
+  whatsappNumber    String?   @default("0000000000")
+  schoolAddress     String?   @default("Kabul, Afghanistan")
+  schoolLogo        String?   // Main school logo for display on website
+  
+  updatedAt         DateTime @updatedAt
+
+  // Advertisement Settings
+  adBanner          String?  // URL/DataURL for the ad image
+  adTitle           String?
+  adDescription     String?
+  isAdRequestActive Boolean  @default(false) // Controlled by School Admin (Request to show ad)
+  isAdApproved      Boolean  @default(false) // Controlled by SuperAdmin (Final approval)
+
+  // ID Card Designer Settings
+  isIdCardEnabled   Boolean  @default(false) // Controlled by SuperAdmin
+  idCardDesign      String?  // JSON string storing the card layout
+}
+
+model MessageRead {
+  id        String   @id @default(cuid())
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  messageId String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  readAt    DateTime @default(now())
+
+  @@unique([messageId, userId])
+}
+
+model PasswordResetRequest {
+  id           String      @id @default(cuid())
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  token        String      @unique
+  expiresAt    DateTime
+  status       String      @default("PENDING") // PENDING, COMPLETED, EXPIRED
+  createdAt    DateTime    @default(now())
+
+  @@index([userId])
+}
+
+model VisitorLog {
+  id        String   @id @default(cuid())
+  ip        String?
+  userAgent String?
+  path      String?
+  timestamp DateTime @default(now())
+
+  @@index([timestamp])
+}
+
+model ChatMessage {
+  id          String   @id @default(cuid())
+  content     String
+  createdAt   DateTime @default(now())
+  
+  sender      User     @relation("SentChatMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  senderId    String
+  
+  receiver    User     @relation("ReceivedChatMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+  receiverId  String
+  
+  read        Boolean  @default(false)
+  
+  @@index([senderId])
+  @@index([receiverId])
+}
+
+model StudentGroup {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  students    User[]   @relation("StudentToGroup")
+}

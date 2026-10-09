@@ -1,0 +1,16 @@
+
+model Grade {
+  id        String      @id @default(cuid())
+  student   User        @relation("StudentGrades", fields: [studentId], references: [id])
+  studentId String
+  subject   Subject     @relation("SubjectGrades", fields: [subjectId], references: [id])
+  subjectId String
+  class     SchoolClass @relation("ClassGrades", fields: [classId], references: [id])
+  classId   String
+  type      String      // MIDTERM, FINAL
+  score     Float
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@unique([studentId, subjectId, classId, type])
+}

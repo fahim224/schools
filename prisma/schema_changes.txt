@@ -1,0 +1,24 @@
+
+// ... existing schema ...
+
+// Add to User model
+// lastActiveAt  DateTime? 
+// sentChats     ChatMessage[] @relation("SentChatMessages")
+// receivedChats ChatMessage[] @relation("ReceivedChatMessages")
+
+model ChatMessage {
+  id          String   @id @default(cuid())
+  content     String
+  createdAt   DateTime @default(now())
+  
+  sender      User     @relation("SentChatMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  senderId    String
+  
+  receiver    User     @relation("ReceivedChatMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+  receiverId  String
+  
+  read        Boolean  @default(false)
+  
+  @@index([senderId])
+  @@index([receiverId])
+}
